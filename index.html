@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="sw">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OBEDY WORLD MOVIE BANK</title>
+<style>
+:root{--gold:#d6ad55;--bg:#101010;--panel:#1b1b1b;--muted:#bbb}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#fff;font:16px Arial,sans-serif}
+header{text-align:center;padding:28px 14px;background:#080808;border-bottom:2px solid var(--gold)}
+h1{margin:0;color:var(--gold);font-size:26px}header p{margin:8px 0 0;letter-spacing:2px;font-size:12px}
+nav{display:flex;gap:8px;overflow:auto;padding:12px;background:#151515;position:sticky;top:0}
+nav a{white-space:nowrap;color:var(--gold);text-decoration:none;padding:9px 12px;border:1px solid #59451f;border-radius:7px;font-size:13px}
+main{max-width:950px;margin:auto;padding:18px}.intro,.admin,.movie{background:var(--panel);border:1px solid #333;border-radius:12px;padding:16px;margin-bottom:16px}
+h2{color:var(--gold);font-size:20px}.muted{color:var(--muted);line-height:1.5}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+.movie img{width:100%;aspect-ratio:2/3;object-fit:cover;background:#333;border-radius:8px}.movie h3{margin:10px 0 6px}
+button,.btn{background:var(--gold);color:#111;border:0;border-radius:7px;padding:11px 14px;font-weight:bold;text-decoration:none;display:inline-block;cursor:pointer}
+input,textarea{width:100%;padding:12px;margin:6px 0 12px;border-radius:7px;border:1px solid #555;background:#101010;color:white}
+label{font-size:14px;color:#ddd}.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1}
+small{color:#aaa}#status{margin:10px 0;color:var(--gold)}
+footer{text-align:center;padding:25px;color:#aaa;font-size:13px}
+</style>
+</head>
+<body>
+<header><h1>OBEDY WORLD MOVIE BANK</h1><p>QUALITY ENTERTAINMENT SERVICES</p></header>
+<nav><a href="#home">HOME</a><a href="#movies">MOVIE KALI ZA WIKI</a><a href="#packages">VIFURUSHI</a><a href="#paid">NILIZO LIPIA</a><a href="#register">JISAJILI</a><a href="#about">ABOUT</a></nav>
+<main>
+<section id="home" class="intro"><h2>Karibu!</h2><p class="muted">Chagua huduma unayotaka. Filamu zinapatikana kulingana na haki na ruhusa za usambazaji.</p></section>
+<section id="movies"><h2>Movie Kali za Wiki</h2><div id="movieList" class="grid"><p class="muted">Inapakia movie...</p></div></section>
+<section id="packages" class="intro"><h2>Vifurushi</h2><p class="muted">Wiki: TSh 2,000<br>Mwezi: TSh 3,000</p></section>
+<section id="paid" class="intro"><h2>Nilizo Lipia</h2><p class="muted">Sehemu hii itaonyesha malipo baada ya kuunganishwa na mfumo rasmi wa malipo.</p></section>
+<section id="register" class="intro"><h2>Jisajili</h2><p class="muted">Wasiliana nasi kupitia WhatsApp kwa usajili na msaada.</p><a class="btn" href="https://wa.me/255792055563?text=Habari%20OBEDY%20WORLD%20MOVIE%20BANK">WhatsApp 0792055563</a></section>
+<section id="about" class="intro"><h2>Kuhusu Sisi</h2><p class="muted">OBEDY WORLD MOVIE BANK — Mbeya Uyole, Mtaa wa Chemchem.</p></section>
+<section class="admin" id="admin"><h2>Admin Dashboard</h2><p class="muted">Msimamizi anaweza kuongeza filamu zenye picha na kiungo cha kutazama/kuagiza. Data huhifadhiwa kwenye hifadhi ya tovuti ili ionekane kwa wageni wote.</p>
+<label>PIN ya Admin</label><input id="pin" type="password" inputmode="numeric" placeholder="Weka Admin PIN">
+<div id="adminFields" hidden>
+<label>Jina la movie</label><input id="title" placeholder="Jina la movie">
+<label>Maelezo mafupi</label><textarea id="description" rows="2" placeholder="Maelezo"></textarea>
+<label>Link ya picha (URL)</label><input id="image" type="url" placeholder="https://...">
+<label>Link ya kutazama au kuagiza (URL)</label><input id="watch" type="url" placeholder="https://...">
+<div class="row"><button id="save">Hifadhi Movie</button><button id="logout" type="button">Toka Admin</button></div>
+</div><div id="status" role="status"></div></section>
+</main><footer>OBEDY WORLD MOVIE BANK · QUALITY ENTERTAINMENT SERVICES</footer>
+<script>
+const api="/.netlify/functions/movies";
+const $=id=>document.getElementById(id);
+let adminPin="";
+async function loadMovies(){
+ const box=$("movieList");
+ try{
+  const res=await fetch(api); if(!res.ok) throw new Error("Imeshindikana kupata movie");
+  const data=await res.json(); const movies=data.movies||[];
+  if(!movies.length){box.innerHTML='<p class="muted">Bado hakuna movie zilizowekwa.</p>';return;}
+  box.innerHTML=movies.map(m=>`<article class="movie"><img src="${escapeAttr(m.image||"")}" alt="Poster ya ${escapeHtml(m.title)}" onerror="this.style.display='none'"><h3>${escapeHtml(m.title)}</h3><p class="muted">${escapeHtml(m.description||"")}</p><a class="btn" href="${safeUrl(m.watch)}" target="_blank" rel="noopener">Tazama / Agiza</a></article>`).join("");
+ }catch(e){box.innerHTML='<p class="muted">Movie hazijapatikana kwa sasa. Jaribu tena baadaye.</p>';}
+}
+function escapeHtml(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function escapeAttr(s){return escapeHtml(s);}
+function safeUrl(s){try{const u=new URL(s);return ["https:","http:"].includes(u.protocol)?u.href:"#"}catch{return "#"}}
+$("pin").addEventListener("change",()=>{adminPin=$("pin").value.trim();$("adminFields").hidden=!adminPin;$("status").textContent=adminPin?"Sasa unaweza kuhifadhi movie. PIN itathibitishwa na server.":"";});
+$("save").addEventListener("click",async()=>{
+ const movie={title:$("title").value.trim(),description:$("description").value.trim(),image:$("image").value.trim(),watch:$("watch").value.trim()};
+ if(!movie.title||!movie.watch){$("status").textContent="Jaza jina la movie na link ya kutazama/kuagiza.";return;}
+ $("status").textContent="Inahifadhi...";
+ try{
+  const res=await fetch(api,{method:"POST",headers:{"Content-Type":"application/json","x-admin-pin":adminPin},body:JSON.stringify(movie)});
+  const data=await res.json();if(!res.ok)throw new Error(data.error||"Imeshindikana kuhifadhi");
+  $("status").textContent="Movie imehifadhiwa kwa wateja wote.";["title","description","image","watch"].forEach(id=>$(id).value="");loadMovies();
+ }catch(e){$("status").textContent=e.message;}
+});
+$("logout").addEventListener("click",()=>{adminPin="";$("pin").value="";$("adminFields").hidden=true;$("status").textContent="Umetoka Admin.";});
+loadMovies();
+</script>
+</body></html>

@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="sw">
 <head>
@@ -20,13 +19,16 @@ section{display:none}
 section.active{display:block}
 h2{color:var(--gold)}
 .panel,.movie{background:var(--panel);padding:15px;margin:12px 0;border-radius:10px}
-input,textarea{width:100%;padding:12px;margin:8px 0;background:#292929;color:white;border:1px solid #555;border-radius:6px}
-button.action{background:var(--gold);color:#111;padding:12px 18px;border:0;border-radius:6px;font-weight:bold;cursor:pointer}
+input,textarea,select{width:100%;padding:12px;margin:8px 0;background:#292929;color:white;border:1px solid #555;border-radius:6px}
+button.action{background:var(--gold);color:#111;padding:12px 18px;border:0;border-radius:6px;font-weight:bold;cursor:pointer;margin:5px 0}
 button:disabled{opacity:.5}
 .movie img{width:100%;max-height:300px;object-fit:contain;border-radius:8px}
 video{width:100%;max-height:400px;margin-top:10px;background:#000}
 footer{text-align:center;padding:25px;color:#aaa}
 a{color:var(--gold)}
+.small{color:#bbb;font-size:14px}
+.status{color:var(--gold);white-space:pre-wrap}
+hr{border:0;border-top:1px solid #444;margin:15px 0}
 </style>
 </head>
 <body>
@@ -60,6 +62,7 @@ a{color:var(--gold)}
 
 <section id="movies">
 <h2>MOVIE KALI ZA WIKI</h2>
+<p class="small">Chagua movie, omba kufunguliwa na fuata maelekezo ya malipo.</p>
 <div id="movieList">Inapakia movie...</div>
 </section>
 
@@ -91,13 +94,22 @@ a{color:var(--gold)}
 
 <section id="admin">
 <h2>ADMIN DASHBOARD</h2>
-<div class="panel">
 
+<div class="panel">
 <label>PIN ya Admin</label>
 <input id="pin" type="password" placeholder="Ingiza PIN yako">
 
+<hr>
+<h3>Ongeza Movie</h3>
+
 <label>Jina la movie</label>
 <input id="title" placeholder="Jina la movie">
+
+<label>Aina ya movie</label>
+<select id="movieKind">
+<option value="movie">Movie moja - TSh 1,000</option>
+<option value="season">Season nzima - TSh 2,000</option>
+</select>
 
 <label>Maelezo mafupi</label>
 <textarea id="description" placeholder="Maelezo ya movie"></textarea>
@@ -109,8 +121,12 @@ a{color:var(--gold)}
 <input id="videoFile" type="file" accept="video/mp4,.mp4">
 
 <button class="action" id="saveBtn" onclick="saveMovie()">HIFADHI MOVIE</button>
-<p id="status"></p>
+<p id="status" class="status"></p>
 
+<hr>
+<h3>Maombi ya Malipo</h3>
+<button class="action" onclick="loadRequests()">ANGALIA MAOMBI</button>
+<div id="requestsList">Bonyeza ANGALIA MAOMBI.</div>
 </div>
 </section>
 
@@ -120,6 +136,8 @@ a{color:var(--gold)}
 
 <script>
 const $ = id => document.getElementById(id);
+const API = "/.netlify/functions/movies";
+const WHATSAPP = "255792055563";
 
 function showPage(id){
   document.querySelectorAll("main section").forEach(s=>s.classList.remove("active"));
@@ -149,12 +167,8 @@ function checkVideoDuration(file){
     v.onloadedmetadata=()=>{
       const duration=v.duration;
       URL.revokeObjectURL(url);
-
-      if(duration>3600){
-        reject(new Error("Video imezidi dakika 60."));
-      }else{
-        resolve(true);
-      }
+      if(duration>3600) reject(new Error("Video imezidi dakika 60."));
+      else resolve(true);
     };
 
     v.onerror=()=>{
@@ -208,6 +222,7 @@ async function saveMovie(){
   const pin=$("pin").value.trim();
   const title=$("title").value.trim();
   const description=$("description").value.trim();
+  const kind=$("movieKind").value;
   const poster=$("posterFile").files[0];
   const video=$("videoFile").files[0];
 
@@ -240,7 +255,7 @@ async function saveMovie(){
 
     $("status").textContent="Inahifadhi movie...";
 
-    const response=await fetch("/.netlify/functions/movies",{
+    const response=await fetch(API,{
       method:"POST",
       headers:{
         "Content-Type":"application/json",
@@ -250,7 +265,8 @@ async function saveMovie(){
         title,
         description,
         image:imageURL,
-        watch:videoURL
+        watch:videoURL,
+        kind
       })
     });
 
@@ -275,44 +291,258 @@ async function saveMovie(){
   }
 }
 
+async function requestMovie(movieId,title,price){
+  const phone=$("phone_"+movieId).value.trim();
+
+  if(!phone){
+    alert("Weka namba yako ya simu.");
+    return;
+  }
+
+  try{
+    const response=await fetch(API,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        action:"request",
+        movieId,
+        phone
+      })
+    });
+
+    const result=await response.json();
+
+    if(!response.ok) throw new Error(result.error||"Ombi halijatumwa.");
+
+    const message=
+      `Habari OBEDY WORLD MOVIE BANK. Nimeomba kufunguliwa: ${title}. `+
+      `Bei: TSh ${Number(price).toLocaleString("en-US")}. `+
+      `Namba yangu: ${phone}. Naomba maelekezo ya malipo.`;
+
+    alert("Ombi limepokelewa. WhatsApp itafunguka kwa ajili ya mawasiliano.");
+    window.open(
+      "https://wa.me/"+WHATSAPP+"?text="+encodeURIComponent(message),
+      "_blank"
+    );
+
+  }catch(error){
+    alert(error.message);
+  }
+}
+
+async function redeemMovie(movieId){
+  const code=$("code_"+movieId).value.trim();
+
+  if(!code){
+    alert("Weka code uliyopewa baada ya malipo.");
+    return;
+  }
+
+  try{
+    const response=await fetch(API,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        action:"redeem",
+        movieId,
+        code
+      })
+    });
+
+    const result=await response.json();
+
+    if(!response.ok) throw new Error(result.error||"Code si sahihi.");
+
+    const videoURL=safeURL(result.watch);
+
+    if(!videoURL) throw new Error("Link ya video si salama au haipatikani.");
+
+    const player=$("player_"+movieId);
+    player.innerHTML="";
+
+    const video=document.createElement("video");
+    video.controls=true;
+    video.playsInline=true;
+    video.preload="metadata";
+
+    const source=document.createElement("source");
+    source.src=videoURL;
+    source.type="video/mp4";
+
+    video.appendChild(source);
+    player.appendChild(video);
+
+    video.play().catch(()=>{});
+    $("unlockMessage_"+movieId).textContent=
+      "Movie imefunguliwa. Tafadhali usisambaze link ya video.";
+
+  }catch(error){
+    alert(error.message);
+  }
+}
+
 async function loadMovies(){
   const list=$("movieList");
   list.textContent="Inapakia movie...";
 
   try{
-    const response=await fetch("/.netlify/functions/movies");
+    const response=await fetch(API);
     const result=await response.json();
 
-    if(!response.ok){
-      throw new Error("Imeshindikana kupata movie.");
-    }
+    if(!response.ok) throw new Error("Imeshindikana kupata movie.");
 
-    if(!result.movies || result.movies.length===0){
+    if(!result.movies||result.movies.length===0){
       list.textContent="Bado hakuna movie.";
       return;
     }
 
     list.innerHTML=result.movies.map(movie=>{
       const poster=safeURL(movie.image);
-      const video=safeURL(movie.watch);
+      const price=Number(movie.price)||(
+        movie.kind==="season"?2000:1000
+      );
+
+      const type=movie.kind==="season"?"Season nzima":"Movie moja";
 
       return `
         <div class="movie">
           <h3>${escapeHTML(movie.title)}</h3>
           ${poster?`<img src="${escapeHTML(poster)}" alt="Poster">`:""}
           <p>${escapeHTML(movie.description)}</p>
-          ${video?`
-            <video controls playsinline preload="metadata" poster="${escapeHTML(poster)}">
-              <source src="${escapeHTML(video)}" type="video/mp4">
-              Kifaa chako hakiwezi kucheza video hii.
-            </video>
-          `:""}
+          <p><b>${type}</b></p>
+          <p><b>Bei: TSh ${price.toLocaleString("en-US")}</b></p>
+
+          <hr>
+          <h4>1. Omba kufunguliwa</h4>
+          <label>Namba yako ya simu</label>
+          <input id="phone_${escapeHTML(movie.id)}"
+            type="tel" placeholder="Mfano 07XXXXXXXX">
+
+          <button class="action"
+            onclick="requestMovie('${escapeHTML(movie.id)}',
+            '${escapeHTML(movie.title).replace(/'/g,"&#39;")}',${price})">
+            OMBA KUFUNGULIWA
+          </button>
+
+          <p class="small">
+            Lipa kwa M-Pesa kwenda 0792055563.
+            Tuma uthibitisho wa malipo WhatsApp.
+            Admin atakutumia code baada ya kuthibitisha malipo.
+          </p>
+
+          <hr>
+          <h4>2. Fungua movie kwa code</h4>
+          <input id="code_${escapeHTML(movie.id)}"
+            type="text" placeholder="Ingiza code uliyopewa">
+
+          <button class="action"
+            onclick="redeemMovie('${escapeHTML(movie.id)}')">
+            FUNGUA MOVIE
+          </button>
+
+          <p id="unlockMessage_${escapeHTML(movie.id)}" class="status"></p>
+          <div id="player_${escapeHTML(movie.id)}"></div>
         </div>
       `;
     }).join("");
 
   }catch(error){
     list.textContent=error.message;
+  }
+}
+
+async function adminPost(body){
+  const pin=$("pin").value.trim();
+
+  if(!pin) throw new Error("Ingiza PIN ya Admin kwanza.");
+
+  const response=await fetch(API,{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json",
+      "x-admin-pin":pin
+    },
+    body:JSON.stringify(body)
+  });
+
+  const result=await response.json();
+
+  if(!response.ok) throw new Error(result.error||"Hitilafu imetokea.");
+
+  return result;
+}
+
+async function loadRequests(){
+  const box=$("requestsList");
+  box.textContent="Inapakia maombi...";
+
+  try{
+    const result=await adminPost({action:"listRequests"});
+    const requests=result.requests||[];
+
+    if(!requests.length){
+      box.textContent="Hakuna maombi kwa sasa.";
+      return;
+    }
+
+    box.innerHTML=requests.map(item=>{
+      const approved=item.status==="approved";
+
+      return `
+        <div class="panel">
+          <p><b>Movie:</b> ${escapeHTML(item.movieTitle)}</p>
+          <p><b>Bei:</b> TSh ${Number(item.price).toLocaleString("en-US")}</p>
+          <p><b>Namba ya mteja:</b> ${escapeHTML(item.phone)}</p>
+          <p><b>Hali:</b> ${approved?"Imethibitishwa":"Inasubiri malipo"}</p>
+          <p><b>Tarehe:</b> ${escapeHTML(item.createdAt||"")}</p>
+          ${approved
+            ? "<p>Malipo tayari yameidhinishwa.</p>"
+            : `<button class="action" onclick="approveRequest('${escapeHTML(item.id)}')">THIBITISHA MALIPO NA TOA CODE</button>`
+          }
+        </div>
+      `;
+    }).join("");
+
+  }catch(error){
+    box.textContent=error.message;
+  }
+}
+
+async function approveRequest(requestId){
+  if(!confirm("Je, umethibitisha kuwa mteja amelipa kweli?")) return;
+
+  try{
+    const result=await adminPost({
+      action:"approve",
+      requestId
+    });
+
+    const message=
+      `Habari. Malipo yako ya ${result.movieTitle} yamethibitishwa. `+
+      `Code yako ya kufungua movie ni: ${result.code}. `+
+      `Asante kwa kutumia OBEDY WORLD MOVIE BANK.`;
+
+    const link="https://wa.me/"+
+      String(result.phone).replace(/[^0-9]/g,"")+
+      "?text="+encodeURIComponent(message);
+
+    const box=document.createElement("div");
+    box.className="panel";
+    box.innerHTML=`
+      <h3>Malipo yameidhinishwa!</h3>
+      <p>Movie: ${escapeHTML(result.movieTitle)}</p>
+      <p>Namba: ${escapeHTML(result.phone)}</p>
+      <p>Code: <b>${escapeHTML(result.code)}</b></p>
+      <a href="${escapeHTML(link)}" target="_blank">
+        TUMA CODE KWA MTEJA WHATSAPP
+      </a>
+    `;
+
+    $("requestsList").prepend(box);
+    loadRequests();
+
+  }catch(error){
+    alert(error.message);
   }
 }
 

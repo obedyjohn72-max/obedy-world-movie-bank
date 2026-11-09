@@ -22,6 +22,7 @@ h2{color:var(--gold)}
 .panel,.movie{background:var(--panel);padding:15px;margin:12px 0;border-radius:10px}
 input,textarea,select{width:100%;padding:12px;margin:8px 0;background:#292929;color:white;border:1px solid #555;border-radius:6px}
 button.action{background:var(--gold);color:#111;padding:12px 18px;border:0;border-radius:6px;font-weight:bold;cursor:pointer;margin:5px 0}
+button.danger{background:#a83232;color:white;padding:10px 15px;border:0;border-radius:6px;font-weight:bold;cursor:pointer;margin:5px 0}
 button:disabled{opacity:.5}
 .movie img{width:100%;max-height:300px;object-fit:contain;border-radius:8px}
 video{width:100%;max-height:400px;margin-top:10px;background:#000}
@@ -101,13 +102,13 @@ hr{border:0;border-top:1px solid #444;margin:15px 0}
 <input id="pin" type="password" placeholder="Ingiza PIN yako">
 
 <hr>
-<h3>Ongeza Movie</h3>
+<h3>Ongeza Movie au Season</h3>
 
-<label>Jina la movie</label>
+<label>Jina la movie au season</label>
 <input id="title" placeholder="Jina la movie">
 
 <label>Aina ya movie</label>
-<select id="movieKind">
+<select id="movieKind" onchange="updateVideoLabel()">
 <option value="movie">Movie moja - TSh 1,000</option>
 <option value="season">Season nzima - TSh 2,000</option>
 </select>
@@ -118,11 +119,21 @@ hr{border:0;border-top:1px solid #444;margin:15px 0}
 <label>Chagua poster kutoka Gallery</label>
 <input id="posterFile" type="file" accept="image/*">
 
-<label>Chagua video ya MP4 (hadi dakika 60)</label>
+<label id="videoLabel">Chagua video ya MP4 (hadi dakika 60)</label>
 <input id="videoFile" type="file" accept="video/mp4,.mp4">
+
+<p id="videoHelp" class="small">
+Kwa movie moja chagua video moja. Kwa season unaweza kuchagua episodes nyingi kwa pamoja.
+</p>
 
 <button class="action" id="saveBtn" onclick="saveMovie()">HIFADHI MOVIE</button>
 <p id="status" class="status"></p>
+
+<hr>
+<h3>Movie Zilizopo - Futa Movie</h3>
+<p class="small">Chagua movie unayotaka kuifuta. Utaulizwa kuthibitisha kabla ya kufuta.</p>
+<button class="action" onclick="loadAdminMovies()">ANGALIA MOVIE ZILIZOPO</button>
+<div id="adminMoviesList">Bonyeza ANGALIA MOVIE ZILIZOPO.</div>
 
 <hr>
 <h3>Maombi ya Malipo</h3>
@@ -145,6 +156,7 @@ function showPage(id){
   document.querySelectorAll("main section").forEach(s=>s.classList.remove("active"));
   $(id).classList.add("active");
   if(id==="movies") loadMovies();
+  if(id==="admin") loadAdminMovies();
 }
 
 function escapeHTML(value){
@@ -160,6 +172,17 @@ function safeURL(value){
   }catch{return "";}
 }
 
+function updateVideoLabel(){
+  const season=$("movieKind").value==="season";
+  $("videoLabel").textContent=season
+    ?"Chagua episodes za season (MP4 nyingi)"
+    :"Chagua video moja ya MP4 (hadi dakika 60)";
+  $("videoHelp").textContent=season
+    ?"Chagua episodes zote za season kwa pamoja. Bei ni TSh 2,000 kwa season nzima."
+    :"Kwa movie moja chagua video moja tu. Bei ni TSh 1,000.";
+  $("videoFile").multiple=season;
+}
+
 function checkVideoDuration(file){
   return new Promise((resolve,reject)=>{
     const url=URL.createObjectURL(file);
@@ -169,13 +192,13 @@ function checkVideoDuration(file){
     v.onloadedmetadata=()=>{
       const duration=v.duration;
       URL.revokeObjectURL(url);
-      if(duration>3600) reject(new Error("Video imezidi dakika 60."));
+      if(duration>3600) reject(new Error(file.name+" imezidi dakika 60."));
       else resolve(true);
     };
 
     v.onerror=()=>{
       URL.revokeObjectURL(url);
-      reject(new Error("Imeshindikana kusoma video."));
+      reject(new Error("Imeshindikana kusoma video: "+file.name));
     };
 
     v.src=url;
@@ -226,9 +249,9 @@ async function saveMovie(){
   const description=$("description").value.trim();
   const kind=$("movieKind").value;
   const poster=$("posterFile").files[0];
-  const video=$("videoFile").files[0];
+  const videos=Array.from($("videoFile").files);
 
-  if(!pin||!title||!poster||!video){
+  if(!pin||!title||!poster||!videos.length){
     $("status").textContent="Jaza PIN, jina, poster na video.";
     return;
   }
@@ -238,22 +261,44 @@ async function saveMovie(){
     return;
   }
 
-  if(video.type!=="video/mp4" && !video.name.toLowerCase().endsWith(".mp4")){
-    $("status").textContent="Chagua video ya MP4.";
+  if(kind==="movie" && videos.length!==1){
+    $("status").textContent="Movie moja inahitaji video moja tu.";
     return;
+  }
+
+  for(const file of videos){
+    if(file.type!=="video/mp4" && !file.name.toLowerCase().endsWith(".mp4")){
+      $("status").textContent="Video zote lazima ziwe MP4.";
+      return;
+    }
   }
 
   btn.disabled=true;
 
   try{
     $("status").textContent="Inakagua urefu wa video...";
-    await checkVideoDuration(video);
+    for(let i=0;i<videos.length;i++){
+      $("status").textContent=
+        "Inakagua video "+(i+1)+" kati ya "+videos.length+"...";
+      await checkVideoDuration(videos[i]);
+    }
 
     $("status").textContent="Inapakia poster...";
     const imageURL=await uploadToCloudinary(poster,"image",pin);
 
-    $("status").textContent="Inapakia video. Subiri...";
-    const videoURL=await uploadToCloudinary(video,"video",pin);
+    const episodes=[];
+
+    for(let i=0;i<videos.length;i++){
+      $("status").textContent=
+        "Inapakia episode "+(i+1)+" kati ya "+videos.length+". Subiri...";
+
+      const videoURL=await uploadToCloudinary(videos[i],"video",pin);
+
+      episodes.push({
+        title:"Episode "+(i+1),
+        watch:videoURL
+      });
+    }
 
     $("status").textContent="Inahifadhi movie...";
 
@@ -264,11 +309,13 @@ async function saveMovie(){
         "x-admin-pin":pin
       },
       body:JSON.stringify({
+        action:"save",
         title,
         description,
         image:imageURL,
-        watch:videoURL,
-        kind
+        kind,
+        watch:kind==="movie"?episodes[0].watch:"",
+        episodes:kind==="season"?episodes:[]
       })
     });
 
@@ -278,13 +325,17 @@ async function saveMovie(){
       throw new Error(result.error||"Movie haijahifadhiwa.");
     }
 
-    $("status").textContent="Movie imehifadhiwa vizuri!";
+    $("status").textContent=kind==="season"
+      ?"Season imehifadhiwa! Episodes: "+episodes.length
+      :"Movie imehifadhiwa vizuri!";
+
     $("title").value="";
     $("description").value="";
     $("posterFile").value="";
     $("videoFile").value="";
 
     await loadMovies();
+    await loadAdminMovies();
 
   }catch(error){
     $("status").textContent=error.message||"Hitilafu imetokea.";
@@ -356,29 +407,75 @@ async function redeemMovie(movieId){
 
     if(!response.ok) throw new Error(result.error||"Code si sahihi.");
 
-    const videoURL=safeURL(result.watch);
-
-    if(!videoURL) throw new Error("Link ya video haipatikani.");
-
     const player=$("player_"+movieId);
     player.innerHTML="";
 
-    const video=document.createElement("video");
-    video.controls=true;
-    video.playsInline=true;
-    video.preload="metadata";
+    if(result.kind==="season" && Array.isArray(result.episodes)){
+      const episodes=result.episodes;
 
-    const source=document.createElement("source");
-    source.src=videoURL;
-    source.type="video/mp4";
+      const select=document.createElement("select");
+      select.id="episodeSelect_"+movieId;
 
-    video.appendChild(source);
-    player.appendChild(video);
+      episodes.forEach((episode,index)=>{
+        const option=document.createElement("option");
+        option.value=String(index);
+        option.textContent=episode.title||"Episode "+(index+1);
+        select.appendChild(option);
+      });
 
-    video.play().catch(()=>{});
+      const video=document.createElement("video");
+      video.controls=true;
+      video.playsInline=true;
+      video.preload="metadata";
 
-    $("unlockMessage_"+movieId).textContent=
-      "Movie imefunguliwa. Tafadhali usisambaze link ya video.";
+      const source=document.createElement("source");
+      source.type="video/mp4";
+      video.appendChild(source);
+
+      function playEpisode(index){
+        const url=safeURL(episodes[index]?.watch);
+        if(!url){
+          alert("Link ya episode hii haipatikani.");
+          return;
+        }
+        source.src=url;
+        video.load();
+      }
+
+      select.addEventListener("change",()=>{
+        playEpisode(Number(select.value));
+      });
+
+      player.appendChild(document.createTextNode("Chagua episode:"));
+      player.appendChild(select);
+      player.appendChild(video);
+
+      playEpisode(0);
+      video.play().catch(()=>{});
+
+      $("unlockMessage_"+movieId).textContent=
+        "Season imefunguliwa! Unaweza kuchagua episode yoyote.";
+
+    }else{
+      const videoURL=safeURL(result.watch);
+      if(!videoURL) throw new Error("Link ya video haipatikani.");
+
+      const video=document.createElement("video");
+      video.controls=true;
+      video.playsInline=true;
+      video.preload="metadata";
+
+      const source=document.createElement("source");
+      source.src=videoURL;
+      source.type="video/mp4";
+
+      video.appendChild(source);
+      player.appendChild(video);
+      video.play().catch(()=>{});
+
+      $("unlockMessage_"+movieId).textContent=
+        "Movie imefunguliwa. Tafadhali usisambaze link ya video.";
+    }
 
   }catch(error){
     alert(error.message);
@@ -403,7 +500,8 @@ async function loadMovies(){
     list.innerHTML=result.movies.map(movie=>{
       const poster=safeURL(movie.image);
       const price=Number(movie.price)||(movie.kind==="season"?2000:1000);
-      const type=movie.kind==="season"?"Season nzima":"Movie moja";
+      const isSeason=movie.kind==="season";
+      const type=isSeason?"Season nzima":"Movie moja";
 
       return `
         <div class="movie">
@@ -411,6 +509,7 @@ async function loadMovies(){
           ${poster?`<img src="${escapeHTML(poster)}" alt="Poster">`:""}
           <p>${escapeHTML(movie.description)}</p>
           <p><b>${type}</b></p>
+          ${isSeason?`<p>Episodes: ${Number(movie.episodeCount)||"Zipo"}</p>`:""}
           <p><b>Bei: TSh ${price.toLocaleString("en-US")}</b></p>
 
           <hr>
@@ -421,7 +520,7 @@ async function loadMovies(){
 
           <button class="action"
             onclick="requestMovie('${escapeHTML(movie.id)}',
-            '${escapeHTML(movie.title).replace(/'/g,"\\'")}',${price})">
+            ${JSON.stringify(String(movie.title))},${price})">
             OMBA KUFUNGULIWA
           </button>
 
@@ -473,6 +572,69 @@ async function adminPost(body){
   return result;
 }
 
+async function loadAdminMovies(){
+  const box=$("adminMoviesList");
+  if(!box) return;
+
+  box.textContent="Inapakia movie zilizopo...";
+
+  try{
+    const response=await fetch(API);
+    const result=await response.json();
+
+    if(!response.ok) throw new Error("Imeshindikana kupata movie.");
+
+    const movies=result.movies||[];
+
+    if(!movies.length){
+      box.textContent="Hakuna movie zilizohifadhiwa.";
+      return;
+    }
+
+    box.innerHTML=movies.map(movie=>`
+      <div class="panel">
+        <p><b>${escapeHTML(movie.title)}</b></p>
+        <p class="small">
+          ${movie.kind==="season"?"Season":"Movie"} |
+          TSh ${Number(movie.price).toLocaleString("en-US")}
+        </p>
+        <button class="danger"
+          onclick="deleteMovie('${escapeHTML(movie.id)}')">
+          FUTA MOVIE HII
+        </button>
+      </div>
+    `).join("");
+
+  }catch(error){
+    box.textContent=error.message;
+  }
+}
+
+async function deleteMovie(movieId){
+  const confirmed=confirm(
+    "Una uhakika unataka kufuta movie hii? Movie ikifutwa wateja hawataweza tena kuifungua kwa code zao."
+  );
+
+  if(!confirmed) return;
+
+  try{
+    $("adminMoviesList").textContent="Inafuta movie...";
+
+    await adminPost({
+      action:"delete",
+      movieId
+    });
+
+    alert("Movie imefutwa.");
+    await loadAdminMovies();
+    await loadMovies();
+
+  }catch(error){
+    $("adminMoviesList").textContent=error.message;
+    alert(error.message);
+  }
+}
+
 async function loadRequests(){
   const box=$("requestsList");
   box.textContent="Inapakia maombi...";
@@ -509,7 +671,6 @@ async function loadRequests(){
   }
 }
 
-/* IMEREKEBISHWA: CODE INAONYESHWA BAADA YA ORODHA KUSASISHWA */
 async function approveRequest(requestId){
   if(!confirm("Je, umethibitisha kuwa mteja amelipa kweli?")) return;
 
@@ -528,10 +689,8 @@ async function approveRequest(requestId){
       String(result.phone).replace(/[^0-9]/g,"")+
       "?text="+encodeURIComponent(message);
 
-    /* Sasisha orodha kwanza */
     await loadRequests();
 
-    /* Kisha onyesha code ili isifutwe na loadRequests */
     const box=document.createElement("div");
     box.className="panel";
 
@@ -552,6 +711,7 @@ async function approveRequest(requestId){
   }
 }
 
+updateVideoLabel();
 loadMovies();
 </script>
 

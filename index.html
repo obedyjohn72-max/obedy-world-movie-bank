@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OBEDY WORLD MOVIE BANK</title>
+
 <style>
 :root{--gold:#d6ad55;--bg:#101010;--panel:#1b1b1b}
 *{box-sizing:border-box}
@@ -31,8 +32,10 @@ a{color:var(--gold)}
 .small{color:#bbb;font-size:14px}
 .status{color:var(--gold);white-space:pre-wrap}
 hr{border:0;border-top:1px solid #444;margin:15px 0}
+.code-box{background:#080808;border:1px solid var(--gold);padding:15px;border-radius:8px;text-align:center;overflow-wrap:anywhere}
 </style>
 </head>
+
 <body>
 
 <header>
@@ -277,9 +280,9 @@ async function saveMovie(){
 
   try{
     $("status").textContent="Inakagua urefu wa video...";
+
     for(let i=0;i<videos.length;i++){
-      $("status").textContent=
-        "Inakagua video "+(i+1)+" kati ya "+videos.length+"...";
+      $("status").textContent="Inakagua video "+(i+1)+" kati ya "+videos.length+"...";
       await checkVideoDuration(videos[i]);
     }
 
@@ -289,9 +292,7 @@ async function saveMovie(){
     const episodes=[];
 
     for(let i=0;i<videos.length;i++){
-      $("status").textContent=
-        "Inapakia episode "+(i+1)+" kati ya "+videos.length+". Subiri...";
-
+      $("status").textContent="Inapakia episode "+(i+1)+" kati ya "+videos.length+". Subiri...";
       const videoURL=await uploadToCloudinary(videos[i],"video",pin);
 
       episodes.push({
@@ -412,7 +413,6 @@ async function redeemMovie(movieId){
 
     if(result.kind==="season" && Array.isArray(result.episodes)){
       const episodes=result.episodes;
-
       const select=document.createElement("select");
       select.id="episodeSelect_"+movieId;
 
@@ -635,6 +635,40 @@ async function deleteMovie(movieId){
   }
 }
 
+// FORMAT CUSTOMER PHONE FOR WHATSAPP
+function normalizePhone(phone){
+  let number=String(phone||"").replace(/\D/g,"");
+
+  if(number.startsWith("0")){
+    number="255"+number.slice(1);
+  }
+
+  return number;
+}
+
+// CREATE WHATSAPP MESSAGE
+function whatsappLink(phone,title,code){
+  const message=
+    `Habari. Malipo yako ya ${title} yamethibitishwa. `+
+    `Code yako ya kufungua movie ni: ${code}. `+
+    `Asante kwa kutumia OBEDY WORLD MOVIE BANK.`;
+
+  return "https://wa.me/"+
+    normalizePhone(phone)+
+    "?text="+encodeURIComponent(message);
+}
+
+// COPY ACCESS CODE
+async function copyCode(code){
+  try{
+    await navigator.clipboard.writeText(code);
+    alert("CODE imenakiliwa vizuri!");
+  }catch(error){
+    prompt("Nakili CODE hii:",code);
+  }
+}
+
+// ADMIN VIEWS ALL PAYMENT REQUESTS
 async function loadRequests(){
   const box=$("requestsList");
   box.textContent="Inapakia maombi...";
@@ -650,18 +684,61 @@ async function loadRequests(){
 
     box.innerHTML=requests.map(item=>{
       const approved=item.status==="approved";
+      const rejected=item.status==="rejected";
+
+      const status=approved
+        ?"Imethibitishwa"
+        :rejected
+          ?"Imekataliwa"
+          :"Inasubiri malipo";
+
+      const code=item.accessCode||"";
 
       return `
         <div class="panel">
           <p><b>Movie:</b> ${escapeHTML(item.movieTitle)}</p>
           <p><b>Bei:</b> TSh ${Number(item.price).toLocaleString("en-US")}</p>
           <p><b>Namba ya mteja:</b> ${escapeHTML(item.phone)}</p>
-          <p><b>Hali:</b> ${approved?"Imethibitishwa":"Inasubiri malipo"}</p>
+          <p><b>Hali:</b> ${status}</p>
           <p><b>Tarehe:</b> ${escapeHTML(item.createdAt||"")}</p>
-          ${approved
-            ? "<p>Malipo tayari yameidhinishwa.</p>"
-            : `<button class="action" onclick="approveRequest('${escapeHTML(item.id)}')">THIBITISHA MALIPO NA TOA CODE</button>`
-          }
+
+          ${approved ? `
+            <hr>
+            <h3>CODE YA MTEJA</h3>
+
+            <div class="code-box">
+              <h2>${escapeHTML(code||"CODE haipatikani")}</h2>
+            </div>
+
+            ${code ? `
+              <button class="action"
+                onclick="copyCode('${escapeHTML(code)}')">
+                NAKILI CODE
+              </button>
+
+              <p>
+                <a href="${escapeHTML(
+                  whatsappLink(item.phone,item.movieTitle,code)
+                )}" target="_blank" rel="noopener">
+                  TUMA CODE KWA WHATSAPP
+                </a>
+              </p>
+            ` : `
+              <p class="small">CODE hii ilitolewa kabla ya mfumo mpya. Haiwezi kurejeshwa.</p>
+            `}
+          ` : rejected ? `
+            <p>Ombi hili limekataliwa.</p>
+          ` : `
+            <button class="action"
+              onclick="approveRequest('${escapeHTML(item.id)}')">
+              THIBITISHA MALIPO NA TOA CODE
+            </button>
+
+            <button class="danger"
+              onclick="rejectRequest('${escapeHTML(item.id)}')">
+              KATAA OMBI
+            </button>
+          `}
         </div>
       `;
     }).join("");
@@ -671,6 +748,7 @@ async function loadRequests(){
   }
 }
 
+// ADMIN APPROVES PAYMENT
 async function approveRequest(requestId){
   if(!confirm("Je, umethibitisha kuwa mteja amelipa kweli?")) return;
 
@@ -680,31 +758,32 @@ async function approveRequest(requestId){
       requestId
     });
 
-    const message=
-      `Habari. Malipo yako ya ${result.movieTitle} yamethibitishwa. `+
-      `Code yako ya kufungua movie ni: ${result.code}. `+
-      `Asante kwa kutumia OBEDY WORLD MOVIE BANK.`;
+    if(!result.code){
+      throw new Error("CODE haikupatikana.");
+    }
 
-    const link="https://wa.me/"+
-      String(result.phone).replace(/[^0-9]/g,"")+
-      "?text="+encodeURIComponent(message);
+    alert("Malipo yamethibitishwa na CODE imetengenezwa!");
 
     await loadRequests();
 
-    const box=document.createElement("div");
-    box.className="panel";
+  }catch(error){
+    alert(error.message);
+    await loadRequests();
+  }
+}
 
-    box.innerHTML=`
-      <h3>CODE IMETENGENEZWA!</h3>
-      <p>Movie: ${escapeHTML(result.movieTitle)}</p>
-      <p>Namba: ${escapeHTML(result.phone)}</p>
-      <h2>${escapeHTML(result.code)}</h2>
-      <a href="${escapeHTML(link)}" target="_blank">
-        TUMA CODE KWA MTEJA WHATSAPP
-      </a>
-    `;
+// ADMIN REJECTS PAYMENT
+async function rejectRequest(requestId){
+  if(!confirm("Una uhakika unataka kukataa ombi hili?")) return;
 
-    $("requestsList").prepend(box);
+  try{
+    await adminPost({
+      action:"reject",
+      requestId
+    });
+
+    alert("Ombi limekataliwa.");
+    await loadRequests();
 
   }catch(error){
     alert(error.message);
@@ -713,6 +792,7 @@ async function approveRequest(requestId){
 
 updateVideoLabel();
 loadMovies();
+
 </script>
 
 </body>

@@ -71,7 +71,7 @@ export default async request => {
             (movie.kind === "season" ? 2000 : 1000),
           episodeCount: Array.isArray(movie.episodes)
             ? movie.episodes.length
-            : (movie.kind === "season" && movie.watch ? 1 : 0)
+            : 0
         }))
       });
     }
@@ -128,7 +128,7 @@ export default async request => {
       });
     }
 
-    // CUSTOMER ENTERS SECRET CODE
+    // CUSTOMER REDEEMS CODE
     if (action === "redeem") {
       const code = String(body.code || "").trim();
       const movieId = String(body.movieId || "");
@@ -164,7 +164,6 @@ export default async request => {
         }, 404);
       }
 
-      // SEASON: RETURN ALL EPISODES
       if (movie.kind === "season") {
         const episodes = Array.isArray(movie.episodes)
           ? movie.episodes
@@ -188,7 +187,6 @@ export default async request => {
         });
       }
 
-      // ORDINARY MOVIE
       if (!movie.watch) {
         return reply({
           error: "Video haipatikani."
@@ -202,7 +200,7 @@ export default async request => {
       });
     }
 
-    // ALL OTHER ACTIONS REQUIRE ADMIN PIN
+    // ADMIN AUTHENTICATION
     if (!isAdmin) {
       return reply({ error: "PIN si sahihi." }, 401);
     }
@@ -214,10 +212,15 @@ export default async request => {
           type: "json"
         }) || [];
 
-      return reply({ requests });
+      return reply({
+        requests: requests.map(item => ({
+          ...item,
+          accessCode: item.accessCode || ""
+        }))
+      });
     }
 
-    // ADMIN APPROVES PAYMENT
+    // ADMIN APPROVES PAYMENT AND GENERATES CODE
     if (action === "approve") {
       const requests =
         await requestsStore.get("requests", {
@@ -236,7 +239,14 @@ export default async request => {
 
       if (item.status === "approved") {
         return reply({
-          error: "Malipo tayari yameidhinishwa."
+          error: "Malipo tayari yameidhinishwa.",
+          code: item.accessCode || ""
+        }, 409);
+      }
+
+      if (item.status === "rejected") {
+        return reply({
+          error: "Ombi hili limekataliwa."
         }, 409);
       }
 
@@ -271,6 +281,7 @@ export default async request => {
       await codesStore.setJSON("codes", codes);
 
       item.status = "approved";
+      item.accessCode = code;
       item.approvedAt = new Date().toISOString();
 
       await requestsStore.setJSON(
@@ -286,7 +297,44 @@ export default async request => {
       });
     }
 
-    // ADMIN DELETES A MOVIE OR SEASON
+    // ADMIN REJECTS PAYMENT REQUEST
+    if (action === "reject") {
+      const requests =
+        await requestsStore.get("requests", {
+          type: "json"
+        }) || [];
+
+      const item = requests.find(
+        r => r.id === body.requestId
+      );
+
+      if (!item) {
+        return reply({
+          error: "Ombi halijapatikana."
+        }, 404);
+      }
+
+      if (item.status !== "pending") {
+        return reply({
+          error: "Ombi hili tayari limefanyiwa maamuzi."
+        }, 409);
+      }
+
+      item.status = "rejected";
+      item.rejectedAt = new Date().toISOString();
+
+      await requestsStore.setJSON(
+        "requests",
+        requests
+      );
+
+      return reply({
+        success: true,
+        message: "Ombi limekataliwa."
+      });
+    }
+
+    // ADMIN DELETES MOVIE OR SEASON
     if (action === "delete") {
       const movieId = String(body.movieId || "");
 
@@ -301,21 +349,15 @@ export default async request => {
 
       if (!movie) {
         return reply({
-          error: "Movie haijapatikana au tayari imefutwa."
+          error: "Movie haijapatikana."
         }, 404);
       }
 
-      // REMOVE MOVIE
-      const remainingMovies = movies.filter(
-        m => m.id !== movieId
-      );
-
       await moviesStore.setJSON(
         "movies",
-        remainingMovies
+        movies.filter(m => m.id !== movieId)
       );
 
-      // REMOVE ALL PAYMENT REQUESTS FOR THIS MOVIE
       const requests =
         await requestsStore.get("requests", {
           type: "json"
@@ -326,7 +368,6 @@ export default async request => {
         requests.filter(r => r.movieId !== movieId)
       );
 
-      // REMOVE ALL ACCESS CODES FOR THIS MOVIE
       const codes =
         await codesStore.get("codes", {
           type: "json"
@@ -339,12 +380,11 @@ export default async request => {
 
       return reply({
         success: true,
-        message: "Movie, maombi na codes zake zimefutwa.",
-        deletedMovie: movie.title
+        message: "Movie na codes zake zimefutwa."
       });
     }
 
-    // ADMIN SAVES A NEW MOVIE OR SEASON
+    // ADMIN SAVES MOVIE OR SEASON
     if (action === "save") {
       const movie = body.movie || body;
       const kind = movie.kind === "season"
@@ -362,8 +402,7 @@ export default async request => {
 
         episodes = movie.episodes
           .filter(item =>
-            item &&
-            validVideoURL(item.watch)
+            item && validVideoURL(item.watch)
           )
           .map((item, index) => ({
             title: String(
@@ -417,6 +456,8 @@ export default async request => {
     }, 400);
 
   } catch (error) {
+    console.error("Movies function error:", error);
+
     return reply({
       error: "Hitilafu ya server."
     }, 500);

@@ -1,3 +1,4 @@
+
 import { getStore } from "@netlify/blobs";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 
@@ -12,6 +13,15 @@ const hashCode = code =>
   createHash("sha256")
     .update(String(code).trim().toUpperCase())
     .digest("hex");
+
+function validVideoURL(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
 
 async function getMovies() {
   const movies = await moviesStore.get("movies", {
@@ -50,7 +60,6 @@ export default async request => {
     if (request.method === "GET") {
       const movies = await getMovies();
 
-      // Public list: never expose video links.
       return reply({
         movies: movies.map(movie => ({
           id: movie.id,
@@ -59,7 +68,10 @@ export default async request => {
           image: movie.image || "",
           kind: movie.kind || "movie",
           price: Number(movie.price) ||
-            (movie.kind === "season" ? 2000 : 1000)
+            (movie.kind === "season" ? 2000 : 1000),
+          episodeCount: Array.isArray(movie.episodes)
+            ? movie.episodes.length
+            : (movie.kind === "season" && movie.watch ? 1 : 0)
         }))
       });
     }
@@ -96,7 +108,8 @@ export default async request => {
         id: randomUUID(),
         movieId: movie.id,
         movieTitle: movie.title,
-        price: Number(movie.price) || 1000,
+        price: Number(movie.price) ||
+          (movie.kind === "season" ? 2000 : 1000),
         phone,
         status: "pending",
         createdAt: new Date().toISOString()
@@ -145,7 +158,38 @@ export default async request => {
       const movies = await getMovies();
       const movie = movies.find(m => m.id === movieId);
 
-      if (!movie || !movie.watch) {
+      if (!movie) {
+        return reply({
+          error: "Movie haipatikani."
+        }, 404);
+      }
+
+      // SEASON: return all episodes
+      if (movie.kind === "season") {
+        const episodes = Array.isArray(movie.episodes)
+          ? movie.episodes
+          : (movie.watch
+              ? [{ title: "Episode 1", watch: movie.watch }]
+              : []);
+
+        if (!episodes.length) {
+          return reply({
+            error: "Episodes za season hazipatikani."
+          }, 404);
+        }
+
+        return reply({
+          success: true,
+          kind: "season",
+          episodes: episodes.map((episode, index) => ({
+            title: episode.title || `Episode ${index + 1}`,
+            watch: episode.watch
+          }))
+        });
+      }
+
+      // ORDINARY MOVIE: old system remains
+      if (!movie.watch) {
         return reply({
           error: "Video haipatikani."
         }, 404);
@@ -153,6 +197,7 @@ export default async request => {
 
       return reply({
         success: true,
+        kind: "movie",
         watch: movie.watch
       });
     }
@@ -241,13 +286,50 @@ export default async request => {
       });
     }
 
-    // ADMIN SAVES A NEW MOVIE
+    // ADMIN SAVES A NEW MOVIE OR SEASON
     if (action === "save") {
       const movie = body.movie || body;
+      const kind = movie.kind === "season"
+        ? "season"
+        : "movie";
 
-      if (!movie.title || !movie.watch) {
+      let episodes = [];
+
+      if (kind === "season") {
+        if (!Array.isArray(movie.episodes)) {
+          return reply({
+            error: "Chagua episodes za season."
+          }, 400);
+        }
+
+        episodes = movie.episodes
+          .filter(item =>
+            item &&
+            validVideoURL(item.watch)
+          )
+          .map((item, index) => ({
+            title: String(
+              item.title || `Episode ${index + 1}`
+            ).trim(),
+            watch: String(item.watch)
+          }));
+
+        if (!episodes.length) {
+          return reply({
+            error: "Hakuna episode yenye video sahihi."
+          }, 400);
+        }
+      } else {
+        if (!validVideoURL(movie.watch)) {
+          return reply({
+            error: "Jaza link sahihi ya video ya movie."
+          }, 400);
+        }
+      }
+
+      if (!String(movie.title || "").trim()) {
         return reply({
-          error: "Jaza jina na link ya movie."
+          error: "Jaza jina la movie."
         }, 400);
       }
 
@@ -258,18 +340,18 @@ export default async request => {
         title: String(movie.title).trim(),
         description: String(movie.description || ""),
         image: String(movie.image || ""),
-        watch: String(movie.watch),
-        kind: movie.kind === "season"
-          ? "season"
-          : "movie",
-        price: movie.kind === "season"
-          ? 2000
-          : 1000
+        watch: kind === "movie" ? String(movie.watch) : "",
+        episodes: kind === "season" ? episodes : [],
+        kind,
+        price: kind === "season" ? 2000 : 1000
       });
 
       await moviesStore.setJSON("movies", movies);
 
-      return reply({ success: true });
+      return reply({
+        success: true,
+        episodeCount: episodes.length
+      });
     }
 
     return reply({

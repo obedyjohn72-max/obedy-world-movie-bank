@@ -48,6 +48,7 @@ a{color:var(--gold)}
 </nav>
 
 <main>
+
 <section id="home" class="active">
 <div class="panel">
 <h2>Karibu OBEDY WORLD MOVIE BANK</h2>
@@ -91,6 +92,7 @@ a{color:var(--gold)}
 <section id="admin">
 <h2>ADMIN DASHBOARD</h2>
 <div class="panel">
+
 <label>PIN ya Admin</label>
 <input id="pin" type="password" placeholder="Ingiza PIN yako">
 
@@ -103,13 +105,15 @@ a{color:var(--gold)}
 <label>Chagua poster kutoka Gallery</label>
 <input id="posterFile" type="file" accept="image/*">
 
-<label>Chagua video ya MP4 (sekunde 60 au chini)</label>
+<label>Chagua video ya MP4 (hadi dakika 60)</label>
 <input id="videoFile" type="file" accept="video/mp4,.mp4">
 
 <button class="action" id="saveBtn" onclick="saveMovie()">HIFADHI MOVIE</button>
 <p id="status"></p>
+
 </div>
 </section>
+
 </main>
 
 <footer>OBEDY WORLD MOVIE BANK © 2026</footer>
@@ -141,16 +145,23 @@ function checkVideoDuration(file){
     const url=URL.createObjectURL(file);
     const v=document.createElement("video");
     v.preload="metadata";
+
     v.onloadedmetadata=()=>{
       const duration=v.duration;
       URL.revokeObjectURL(url);
-      if(duration>60) reject(new Error("Video imezidi sekunde 60."));
-      else resolve(true);
+
+      if(duration>3600){
+        reject(new Error("Video imezidi dakika 60."));
+      }else{
+        resolve(true);
+      }
     };
+
     v.onerror=()=>{
       URL.revokeObjectURL(url);
       reject(new Error("Imeshindikana kusoma video."));
     };
+
     v.src=url;
   });
 }
@@ -158,12 +169,18 @@ function checkVideoDuration(file){
 async function uploadToCloudinary(file,type,pin){
   const signResponse=await fetch("/.netlify/functions/cloudinary-sign",{
     method:"POST",
-    headers:{"Content-Type":"application/json","x-admin-pin":pin},
+    headers:{
+      "Content-Type":"application/json",
+      "x-admin-pin":pin
+    },
     body:JSON.stringify({})
   });
 
   const sign=await signResponse.json();
-  if(!signResponse.ok) throw new Error(sign.error||"Imeshindikana kupata ruhusa ya upload.");
+
+  if(!signResponse.ok){
+    throw new Error(sign.error||"Imeshindikana kupata ruhusa ya upload.");
+  }
 
   const data=new FormData();
   data.append("file",file);
@@ -178,7 +195,11 @@ async function uploadToCloudinary(file,type,pin){
   );
 
   const result=await response.json();
-  if(!response.ok) throw new Error(result.error?.message||"Upload imeshindikana.");
+
+  if(!response.ok){
+    throw new Error(result.error?.message||"Upload imeshindikana.");
+  }
+
   return result.secure_url;
 }
 
@@ -218,6 +239,7 @@ async function saveMovie(){
     const videoURL=await uploadToCloudinary(video,"video",pin);
 
     $("status").textContent="Inahifadhi movie...";
+
     const response=await fetch("/.netlify/functions/movies",{
       method:"POST",
       headers:{
@@ -233,13 +255,17 @@ async function saveMovie(){
     });
 
     const result=await response.json();
-    if(!response.ok) throw new Error(result.error||"Movie haijahifadhiwa.");
+
+    if(!response.ok){
+      throw new Error(result.error||"Movie haijahifadhiwa.");
+    }
 
     $("status").textContent="Movie imehifadhiwa vizuri!";
     $("title").value="";
     $("description").value="";
     $("posterFile").value="";
     $("videoFile").value="";
+
     await loadMovies();
 
   }catch(error){
@@ -256,7 +282,10 @@ async function loadMovies(){
   try{
     const response=await fetch("/.netlify/functions/movies");
     const result=await response.json();
-    if(!response.ok) throw new Error("Imeshindikana kupata movie.");
+
+    if(!response.ok){
+      throw new Error("Imeshindikana kupata movie.");
+    }
 
     if(!result.movies || result.movies.length===0){
       list.textContent="Bado hakuna movie.";
@@ -289,5 +318,6 @@ async function loadMovies(){
 
 loadMovies();
 </script>
+
 </body>
 </html>

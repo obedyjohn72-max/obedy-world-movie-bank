@@ -164,7 +164,7 @@ export default async request => {
         }, 404);
       }
 
-      // SEASON: return all episodes
+      // SEASON: RETURN ALL EPISODES
       if (movie.kind === "season") {
         const episodes = Array.isArray(movie.episodes)
           ? movie.episodes
@@ -188,7 +188,7 @@ export default async request => {
         });
       }
 
-      // ORDINARY MOVIE: old system remains
+      // ORDINARY MOVIE
       if (!movie.watch) {
         return reply({
           error: "Video haipatikani."
@@ -283,6 +283,64 @@ export default async request => {
         code,
         phone: item.phone,
         movieTitle: item.movieTitle
+      });
+    }
+
+    // ADMIN DELETES A MOVIE OR SEASON
+    if (action === "delete") {
+      const movieId = String(body.movieId || "");
+
+      if (!movieId) {
+        return reply({
+          error: "Chagua movie ya kufuta."
+        }, 400);
+      }
+
+      const movies = await getMovies();
+      const movie = movies.find(m => m.id === movieId);
+
+      if (!movie) {
+        return reply({
+          error: "Movie haijapatikana au tayari imefutwa."
+        }, 404);
+      }
+
+      // REMOVE MOVIE
+      const remainingMovies = movies.filter(
+        m => m.id !== movieId
+      );
+
+      await moviesStore.setJSON(
+        "movies",
+        remainingMovies
+      );
+
+      // REMOVE ALL PAYMENT REQUESTS FOR THIS MOVIE
+      const requests =
+        await requestsStore.get("requests", {
+          type: "json"
+        }) || [];
+
+      await requestsStore.setJSON(
+        "requests",
+        requests.filter(r => r.movieId !== movieId)
+      );
+
+      // REMOVE ALL ACCESS CODES FOR THIS MOVIE
+      const codes =
+        await codesStore.get("codes", {
+          type: "json"
+        }) || [];
+
+      await codesStore.setJSON(
+        "codes",
+        codes.filter(c => c.movieId !== movieId)
+      );
+
+      return reply({
+        success: true,
+        message: "Movie, maombi na codes zake zimefutwa.",
+        deletedMovie: movie.title
       });
     }
 

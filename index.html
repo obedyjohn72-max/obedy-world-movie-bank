@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="sw">
 <head>
@@ -94,8 +95,8 @@ hr{border:0;border-top:1px solid #444;margin:15px 0}
 
 <section id="admin">
 <h2>ADMIN DASHBOARD</h2>
-
 <div class="panel">
+
 <label>PIN ya Admin</label>
 <input id="pin" type="password" placeholder="Ingiza PIN yako">
 
@@ -127,6 +128,7 @@ hr{border:0;border-top:1px solid #444;margin:15px 0}
 <h3>Maombi ya Malipo</h3>
 <button class="action" onclick="loadRequests()">ANGALIA MAOMBI</button>
 <div id="requestsList">Bonyeza ANGALIA MAOMBI.</div>
+
 </div>
 </section>
 
@@ -320,6 +322,7 @@ async function requestMovie(movieId,title,price){
       `Namba yangu: ${phone}. Naomba maelekezo ya malipo.`;
 
     alert("Ombi limepokelewa. WhatsApp itafunguka kwa ajili ya mawasiliano.");
+
     window.open(
       "https://wa.me/"+WHATSAPP+"?text="+encodeURIComponent(message),
       "_blank"
@@ -355,7 +358,7 @@ async function redeemMovie(movieId){
 
     const videoURL=safeURL(result.watch);
 
-    if(!videoURL) throw new Error("Link ya video si salama au haipatikani.");
+    if(!videoURL) throw new Error("Link ya video haipatikani.");
 
     const player=$("player_"+movieId);
     player.innerHTML="";
@@ -373,6 +376,7 @@ async function redeemMovie(movieId){
     player.appendChild(video);
 
     video.play().catch(()=>{});
+
     $("unlockMessage_"+movieId).textContent=
       "Movie imefunguliwa. Tafadhali usisambaze link ya video.";
 
@@ -398,10 +402,7 @@ async function loadMovies(){
 
     list.innerHTML=result.movies.map(movie=>{
       const poster=safeURL(movie.image);
-      const price=Number(movie.price)||(
-        movie.kind==="season"?2000:1000
-      );
-
+      const price=Number(movie.price)||(movie.kind==="season"?2000:1000);
       const type=movie.kind==="season"?"Season nzima":"Movie moja";
 
       return `
@@ -415,12 +416,12 @@ async function loadMovies(){
           <hr>
           <h4>1. Omba kufunguliwa</h4>
           <label>Namba yako ya simu</label>
-          <input id="phone_${escapeHTML(movie.id)}"
-            type="tel" placeholder="Mfano 07XXXXXXXX">
+          <input id="phone_${escapeHTML(movie.id)}" type="tel"
+            placeholder="Mfano 07XXXXXXXX">
 
           <button class="action"
             onclick="requestMovie('${escapeHTML(movie.id)}',
-            '${escapeHTML(movie.title).replace(/'/g,"&#39;")}',${price})">
+            '${escapeHTML(movie.title).replace(/'/g,"\\'")}',${price})">
             OMBA KUFUNGULIWA
           </button>
 
@@ -508,6 +509,7 @@ async function loadRequests(){
   }
 }
 
+/* IMEREKEBISHWA: CODE INAONYESHWA BAADA YA ORODHA KUSASISHWA */
 async function approveRequest(requestId){
   if(!confirm("Je, umethibitisha kuwa mteja amelipa kweli?")) return;
 
@@ -526,20 +528,24 @@ async function approveRequest(requestId){
       String(result.phone).replace(/[^0-9]/g,"")+
       "?text="+encodeURIComponent(message);
 
+    /* Sasisha orodha kwanza */
+    await loadRequests();
+
+    /* Kisha onyesha code ili isifutwe na loadRequests */
     const box=document.createElement("div");
     box.className="panel";
+
     box.innerHTML=`
-      <h3>Malipo yameidhinishwa!</h3>
+      <h3>CODE IMETENGENEZWA!</h3>
       <p>Movie: ${escapeHTML(result.movieTitle)}</p>
       <p>Namba: ${escapeHTML(result.phone)}</p>
-      <p>Code: <b>${escapeHTML(result.code)}</b></p>
+      <h2>${escapeHTML(result.code)}</h2>
       <a href="${escapeHTML(link)}" target="_blank">
         TUMA CODE KWA MTEJA WHATSAPP
       </a>
     `;
 
     $("requestsList").prepend(box);
-    loadRequests();
 
   }catch(error){
     alert(error.message);

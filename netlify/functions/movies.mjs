@@ -14,6 +14,9 @@ const hashCode = code =>
     .update(String(code).trim().toUpperCase())
     .digest("hex");
 
+const normalizePhone = phone =>
+  String(phone || "").replace(/\D/g, "");
+
 function validVideoURL(value) {
   try {
     const url = new URL(value);
@@ -128,7 +131,7 @@ export default async request => {
       });
     }
 
-    // CUSTOMER REDEEMS CODE
+    // CUSTOMER REDEEMS CODE FOR ONE MOVIE OR SEASON
     if (action === "redeem") {
       const code = String(body.code || "").trim();
       const movieId = String(body.movieId || "");
@@ -197,6 +200,97 @@ export default async request => {
         success: true,
         kind: "movie",
         watch: movie.watch
+      });
+    }
+
+    // CUSTOMER NILIZOLIPIA LIBRARY
+    // Customer enters phone number and one valid purchase code.
+    if (action === "myMovies") {
+      const phone = normalizePhone(body.phone);
+      const code = String(body.code || "").trim();
+
+      if (!phone || !code) {
+        return reply({
+          error: "Weka namba ya simu na code ya malipo."
+        }, 400);
+      }
+
+      const requests =
+        await requestsStore.get("requests", {
+          type: "json"
+        }) || [];
+
+      const codes =
+        await codesStore.get("codes", {
+          type: "json"
+        }) || [];
+
+      const validCode = codes.find(item =>
+        item.codeHash === hashCode(code)
+      );
+
+      if (!validCode) {
+        return reply({
+          error: "Code si sahihi."
+        }, 403);
+      }
+
+      const verifiedRequest = requests.find(item =>
+        item.id === validCode.requestId &&
+        item.status === "approved" &&
+        normalizePhone(item.phone) === phone
+      );
+
+      if (!verifiedRequest) {
+        return reply({
+          error: "Code hii haiendani na namba ya simu."
+        }, 403);
+      }
+
+      const movies = await getMovies();
+
+      const purchases = requests
+        .filter(item =>
+          item.status === "approved" &&
+          normalizePhone(item.phone) === phone
+        )
+        .map(item => {
+          const movie = movies.find(m => m.id === item.movieId);
+
+          if (!movie) return null;
+
+          if (movie.kind === "season") {
+            const episodes = Array.isArray(movie.episodes)
+              ? movie.episodes
+              : (movie.watch
+                  ? [{ title: "Episode 1", watch: movie.watch }]
+                  : []);
+
+            return {
+              id: movie.id,
+              title: movie.title,
+              kind: "season",
+              image: movie.image || "",
+              episodes: episodes.map((episode, index) => ({
+                title: episode.title || `Episode ${index + 1}`,
+                watch: episode.watch
+              }))
+            };
+          }
+
+          return {
+            id: movie.id,
+            title: movie.title,
+            kind: "movie",
+            image: movie.image || "",
+            watch: movie.watch || ""
+          };
+        })
+        .filter(Boolean);
+
+      return reply({
+        success: true,
+        purchases
       });
     }
 
